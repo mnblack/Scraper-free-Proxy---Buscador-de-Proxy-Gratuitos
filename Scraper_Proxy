@@ -1,0 +1,84 @@
+import requests
+import random
+import concurrent.futures
+from bs4 import BeautifulSoup
+
+# URLs de páginas de proxies
+proxy_sources = [
+    "https://www.sslproxies.org/",
+    "https://free-proxy-list.net/",
+    "https://hidemy.name/en/proxy-list/",
+    "https://spys.one/en/http-proxy-list/",
+    "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=1000&country=all"
+]
+
+# Verificar si un proxy es válido
+def test_proxy(proxy):
+    url = "http://www.google.com"
+    proxies = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
+    
+    try:
+        response = requests.get(url, proxies=proxies, timeout=5)
+        if response.status_code == 200:
+            print(f"[+] Proxy válido: {proxy}")
+            return proxy
+    except requests.exceptions.RequestException:
+        return None
+
+# Extraer proxies desde diferentes fuentes
+def scrape_proxies():
+    proxies = set()
+    
+    for source in proxy_sources:
+        try:
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+            response = requests.get(source, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, "html.parser")
+                
+                # Extraer proxies de tablas
+                for row in soup.find_all("tr"):
+                    cols = row.find_all("td")
+                    if len(cols) > 1:
+                        ip = cols[0].text.strip()
+                        port = cols[1].text.strip()
+                        if ip and port:
+                            proxies.add(f"{ip}:{port}")
+
+                # Extraer proxies de APIs o páginas de texto plano
+                if "proxyscrape.com" in source:
+                    proxies.update(response.text.split("\n"))
+        
+        except Exception as e:
+            print(f"[!] Error al extraer de {source}: {e}")
+    
+    print(f"[*] Se encontraron {len(proxies)} proxies en total")
+    return list(proxies)
+
+# Filtrar y verificar proxies válidos
+def get_valid_proxies():
+    proxies = scrape_proxies()
+    valid_proxies = []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        results = executor.map(test_proxy, proxies)
+
+    for proxy in results:
+        if proxy:
+            valid_proxies.append(proxy)
+
+    print(f"[+] {len(valid_proxies)} proxies válidos encontrados")
+    return valid_proxies
+
+# Ejecutar el scraper y obtener proxies funcionales
+if __name__ == "__main__":
+    working_proxies = get_valid_proxies()
+    
+    # Guardar proxies válidos en un archivo
+    with open("valid_proxies.txt", "w") as file:
+        for proxy in working_proxies:
+            file.write(proxy + "\n")
+
+    print("Proxies válidos guardados en 'valid_proxies.txt'")
+
